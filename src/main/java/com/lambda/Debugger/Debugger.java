@@ -22,8 +22,14 @@ package com.lambda.Debugger;
 import java.awt.AWTEvent;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.GraphicsEnvironment;
+import java.awt.Image;
+import java.awt.Insets;
+import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
@@ -36,6 +42,7 @@ import java.util.Date;
 import javax.swing.AbstractListModel;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JCheckBoxMenuItem;
@@ -52,14 +59,24 @@ import javax.swing.JScrollPane;
 import javax.swing.JSlider;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
+import javax.swing.JToolBar;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import javax.swing.event.ListSelectionListener;
+import javax.swing.plaf.basic.BasicSplitPaneDivider;
+import javax.swing.plaf.basic.BasicSplitPaneUI;
 
 public class Debugger extends JFrame {
-    private static int FONT_SIZE = 10;
-    private static String FONT = "Courier";
-    static String version = "28.Mar.07";
+    private static int FONT_SIZE = 12;
+    private static String FONT = Font.MONOSPACED;
+    private static final Color PANE_HEADER_BG = new Color(243, 243, 243);
+    private static final Color PANE_RULE = new Color(192, 192, 192);
+    private static final Color TOOLBAR_RULE = new Color(200, 200, 200);
+    private static final Color EVENT_CHIP_BG = new Color(238, 243, 255);
+    private static final Color EVENT_CHIP_BORDER = new Color(197, 212, 245);
+    static String version = "1.8";
+    private static boolean lookAndFeelInstalled = false;
     static boolean firstRun = false;
     static Debugger mainFrame;
     static long endTime, startTime, totalTime;
@@ -193,24 +210,166 @@ public class Debugger extends JFrame {
             StdOut.println(ODBName + ": " + s);
     }
 
-    private void initialize() {
-        ClassLoader cl = getClass().getClassLoader();
-        upImage = new ImageIcon(cl.getResource("images/up16.gif"));
-        downImage = new ImageIcon(cl.getResource("images/down16.gif"));
-        firstImage = new ImageIcon(cl.getResource("images/first16.gif"));
-        backImage = new ImageIcon(cl.getResource("images/back16.gif"));
-        forwardImage = new ImageIcon(cl.getResource("images/forward16.gif"));
-        lastImage = new ImageIcon(cl.getResource("images/last16.gif"));
-        loopImage = new ImageIcon(cl.getResource("images/loop16.gif"));
-        backLoopImage = new ImageIcon(cl.getResource("images/BackLoop16.gif"));
-        prevLineImage = new ImageIcon(cl.getResource("images/PrevLine16.gif"));
-        nextLineImage = new ImageIcon(cl.getResource("images/NextLine16.gif"));
+    static void installLookAndFeel() {
+        if (lookAndFeelInstalled || NO_WINDOWS) {
+            return;
+        }
+        lookAndFeelInstalled = true;
+        try {
+            if (GraphicsEnvironment.isHeadless()) {
+                return;
+            }
+            System.setProperty("apple.laf.useScreenMenuBar", "true");
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            UIManager.put("SplitPane.dividerSize", Integer.valueOf(3));
+            UIManager.put("List.focusCellHighlightBorder",
+                    BorderFactory.createEmptyBorder());
+        } catch (Exception ignored) {
+        }
+    }
 
-        setTitle("Omniscient Debugger " + version + " - " + programName);
+    private static void configureSplit(JSplitPane pane, double resizeWeight) {
+        pane.setUI(new BasicSplitPaneUI() {
+            public BasicSplitPaneDivider createDefaultDivider() {
+                return new BasicSplitPaneDivider(this) {
+                    public void setBorder(javax.swing.border.Border b) {
+                    }
+
+                    public void paint(Graphics g) {
+                        g.setColor(PANE_RULE);
+                        g.fillRect(0, 0, getWidth(), getHeight());
+                    }
+                };
+            }
+        });
+        pane.setContinuousLayout(true);
+        pane.setResizeWeight(resizeWeight);
+        pane.setBorder(BorderFactory.createEmptyBorder());
+        pane.setDividerSize(3);
+        pane.setBackground(PANE_RULE);
+    }
+
+    private ImageIcon loadNavIcon(String fileName, int size) {
+        java.net.URL url = getClass().getClassLoader().getResource(
+                "images/" + fileName);
+        if (url == null) {
+            return new ImageIcon();
+        }
+        ImageIcon raw = new ImageIcon(url);
+        Image scaled = raw.getImage().getScaledInstance(size, size,
+                Image.SCALE_SMOOTH);
+        return new ImageIcon(scaled);
+    }
+
+    private static JLabel toolbarGroupLabel(String text) {
+        JLabel label = new JLabel(text.toUpperCase());
+        label.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
+        label.setForeground(new Color(102, 102, 102));
+        label.setBorder(BorderFactory.createEmptyBorder(0, 4, 0, 4));
+        return label;
+    }
+
+    private static JButton toolbarButton(String text, ImageIcon icon,
+            String tip) {
+        JButton button = icon == null ? new JButton(text) : new JButton(text,
+                icon);
+        button.setToolTipText(tip);
+        button.setFocusable(false);
+        button.putClientProperty("JComponent.sizeVariant", "small");
+        button.putClientProperty("JButton.buttonType", "square");
+        button.setMargin(new Insets(2, 6, 2, 6));
+        button.setIconTextGap(4);
+        button.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
+        return button;
+    }
+
+    private static JButton navButton(ImageIcon icon, String tip) {
+        JButton button = new JButton(icon);
+        button.setToolTipText(tip);
+        button.setFocusable(false);
+        button.putClientProperty("JComponent.sizeVariant", "mini");
+        button.setMargin(new Insets(0, 1, 0, 1));
+        button.setBorder(BorderFactory.createEmptyBorder(1, 2, 1, 2));
+        button.setBorderPainted(false);
+        button.setContentAreaFilled(false);
+        button.setOpaque(false);
+        button.setRolloverEnabled(true);
+        button.setPreferredSize(new Dimension(20, 18));
+        return button;
+    }
+
+    private static JPanel paneHeader(String title) {
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(PANE_HEADER_BG);
+        header.setOpaque(true);
+        header.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, PANE_RULE),
+                BorderFactory.createEmptyBorder(1, 8, 1, 2)));
+        JLabel label = new JLabel(title.trim());
+        label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 11));
+        header.add(label, BorderLayout.WEST);
+        JPanel nav = new JPanel();
+        nav.setLayout(new BoxLayout(nav, BoxLayout.X_AXIS));
+        nav.setOpaque(false);
+        header.add(nav, BorderLayout.EAST);
+        header.putClientProperty("nav", nav);
+        return header;
+    }
+
+    private static JPanel navBar(JPanel panel) {
+        JPanel header = (JPanel) panel.getClientProperty("header");
+        return (JPanel) header.getClientProperty("nav");
+    }
+
+    private void sizeToScreen() {
+        if (GraphicsEnvironment.isHeadless()) {
+            return;
+        }
+        Rectangle bounds = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .getMaximumWindowBounds();
+        int width = Math.max((int) (bounds.width * 0.9), 800);
+        int height = Math.max((int) (bounds.height * 0.9), 600);
+        setSize(width, height);
+        setLocation(bounds.x + (bounds.width - width) / 2, bounds.y
+                + (bounds.height - height) / 2);
+    }
+
+    private void layoutSplitPanes() {
+        if (GraphicsEnvironment.isHeadless()) {
+            return;
+        }
+        SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                splitPaneH.setDividerLocation(0.74);
+                splitPaneH1.setDividerLocation(0.28);
+                westPane1.setDividerLocation(0.25);
+                westPane2.setDividerLocation(0.33);
+                westPane3.setDividerLocation(0.50);
+                centerPane1.setDividerLocation(0.40);
+                centerPane2.setDividerLocation(0.70);
+            }
+        });
+    }
+
+    private void initialize() {
+        int iconSize = 14;
+        upImage = loadNavIcon("up.png", iconSize);
+        downImage = loadNavIcon("down.png", iconSize);
+        firstImage = loadNavIcon("first.png", iconSize);
+        backImage = loadNavIcon("back.png", iconSize);
+        forwardImage = loadNavIcon("forward.png", iconSize);
+        lastImage = loadNavIcon("last.png", iconSize);
+        loopImage = loadNavIcon("loop.png", iconSize);
+        backLoopImage = loadNavIcon("backLoop.png", iconSize);
+        prevLineImage = loadNavIcon("prevLine.png", iconSize);
+        nextLineImage = loadNavIcon("nextLine.png", iconSize);
+        previousImage = loadNavIcon("previous.png", iconSize);
+
+        setTitle("Lewis ODB " + version + " - " + programName);
 
         topPanel = new JPanel();
         topPanel.setLayout(new BorderLayout());
-        // topPanel.setSize(500, 800);
+        topPanel.setBackground(new Color(236, 236, 236));
         getContentPane().add(topPanel);
         JMenuBar menuBar = new JMenuBar();
         setJMenuBar(menuBar);
@@ -229,43 +388,60 @@ public class Debugger extends JFrame {
             createHelpMenu(menuBar);
 
         JButton b3, b4, b5, b6, b7;
-
-        menuBar.add(b3 = new JButton("Previous"));
-        b3.setToolTipText("Revert to the previously selected time");
-        menuBar.add(b4 = new JButton(firstImage));
-        b4.setToolTipText("First timestamp (any thread)");
-        menuBar.add(b5 = new JButton(backImage));
-        b5.setToolTipText("Previous timestamp (any thread)");
-        menuBar.add(b6 = new JButton(forwardImage));
-        b6.setToolTipText("Next timestamp (any thread)");
-        menuBar.add(b7 = new JButton(lastImage));
-        b7.setToolTipText("Last timestamp (any thread)");
+        JToolBar toolBar = new JToolBar("Time");
+        toolBar.setFloatable(false);
+        toolBar.setRollover(true);
+        toolBar.setOpaque(true);
+        toolBar.setBackground(new Color(250, 250, 250));
+        toolBar.setMargin(new Insets(0, 0, 0, 0));
+        toolBar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, TOOLBAR_RULE),
+                BorderFactory.createEmptyBorder(4, 8, 4, 8)));
+        toolBar.add(toolbarGroupLabel("Selection"));
+        toolBar.add(b3 = toolbarButton("Previous time", previousImage,
+                "Revert to the previously selected time"));
+        toolBar.addSeparator();
+        toolBar.add(toolbarGroupLabel("Any thread"));
+        toolBar.add(b4 = toolbarButton("First", firstImage,
+                "First timestamp (any thread)"));
+        toolBar.add(b5 = toolbarButton("Back", backImage,
+                "Previous timestamp (any thread)"));
+        toolBar.add(b6 = toolbarButton("Forward", forwardImage,
+                "Next timestamp (any thread)"));
+        toolBar.add(b7 = toolbarButton("Last", lastImage,
+                "Last timestamp (any thread)"));
         ActionListener listener = new DebuggerActionListener(b3, b4, b5, b6, b7);
         b3.addActionListener(listener);
         b4.addActionListener(listener);
         b5.addActionListener(listener);
         b6.addActionListener(listener);
         b7.addActionListener(listener);
+        toolBar.addSeparator();
+        toolBar.add(TSLabel = new JLabel("Time Stamp: "));
+        TSLabel.setOpaque(true);
+        TSLabel.setBackground(EVENT_CHIP_BG);
+        TSLabel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(EVENT_CHIP_BORDER),
+                BorderFactory.createEmptyBorder(2, 6, 2, 6)));
+        TSLabel.setFont(new Font(FONT, Font.PLAIN, FONT_SIZE));
+        topPanel.add(toolBar, BorderLayout.NORTH);
 
-        menuBar.add(TSLabel = new JLabel("Time Stamp: "));
-
-        // Create spliter panes for rows
-        JSplitPane westPane1 = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        JSplitPane westPane2 = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        JSplitPane westPane3 = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        // JSplitPane eastPane1 = new JSplitPane( JSplitPane.VERTICAL_SPLIT );
-        // JSplitPane eastPane2 = new JSplitPane( JSplitPane.VERTICAL_SPLIT );
-        // JSplitPane eastPane3 = new JSplitPane( JSplitPane.VERTICAL_SPLIT );
-        JSplitPane centerPane1 = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        JSplitPane centerPane2 = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        ;
-        // eastPane1.setTopComponent(eastPane2);
-        // eastPane1.setBottomComponent(eastPane3);
+        westPane1 = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        westPane2 = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        westPane3 = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        centerPane1 = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        centerPane2 = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         centerPane1.setBottomComponent(centerPane2);
 
-        // Create a splitter pane for the three columns
-        JSplitPane splitPaneH = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        JSplitPane splitPaneH1 = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        splitPaneH = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        splitPaneH1 = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        configureSplit(westPane1, 0.25);
+        configureSplit(westPane2, 0.33);
+        configureSplit(westPane3, 0.50);
+        configureSplit(centerPane1, 0.40);
+        configureSplit(centerPane2, 0.70);
+        configureSplit(splitPaneH1, 0.28);
+        configureSplit(splitPaneH, 0.74);
         topPanel.add(splitPaneH, BorderLayout.CENTER);
 
         // miniBuffer at bottom
@@ -392,7 +568,7 @@ public class Debugger extends JFrame {
     }
 
     public static String getString(int time) { // time stamp time!
-        String s = " Event " + formatTime(time) + " [" + TimeStamp.eott() + "]";
+        String s = " Event " + formatTime(time) + " of " + TimeStamp.eott();
         return s;
     }
 
@@ -478,53 +654,33 @@ public class Debugger extends JFrame {
     }
 
     public JPanel createP(String s) {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        JLabel l = new JLabel(s);
-        JPanel panel1 = new JPanel();
-        // panel.add(l);
-        panel1.add(l);
-        panel1.setLayout(new BoxLayout(panel1, BoxLayout.X_AXIS));
-        panel.add(panel1);
-        // panel.setBackground( Color.lightGray );
-        panel.setBorder(BorderFactory.createLineBorder(Color.black));
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(Color.WHITE);
+        panel.setBorder(BorderFactory.createEmptyBorder());
+        JPanel header = paneHeader(s);
+        panel.putClientProperty("header", header);
+        panel.add(header, BorderLayout.NORTH);
         return panel;
     }
 
     public JPanel createP2(String s) {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-
-        JPanel panel1 = new JPanel();
-        panel1.setLayout(new BoxLayout(panel1, BoxLayout.Y_AXIS));
-        JPanel panel2 = new JPanel();
-        panel2.setLayout(new BoxLayout(panel2, BoxLayout.X_AXIS));
-        JLabel l = new JLabel(s);
-        panel1.add(l);
-        panel1.add(panel2);
-        panel.add(panel1);
-
-        // panel.setBackground( Color.lightGray );
-        panel.setBorder(BorderFactory.createLineBorder(Color.black));
-        return panel;
+        return createP(s);
     }
 
     public JPanel createP1(String s) {
-        JLabel l = new JLabel(s);
-        JPanel panel = new JPanel();
-        panel.add(l);
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        // panel.setBackground( Color.lightGray );
-        panel.setBorder(BorderFactory.createLineBorder(Color.black));
-        return panel;
+        return createP(s);
     }
 
     public JScrollPane createTA(String s) {
-        JTextArea ta = new JTextArea(s);
+        JTextArea ta = new JTextArea(s, 1, 0);
         ta.setFont(new Font(FONT, Font.PLAIN, FONT_SIZE));
-        ta.setBorder(BorderFactory.createLineBorder(Color.black));
+        ta.setBorder(BorderFactory.createEmptyBorder(3, 8, 3, 8));
         JScrollPane sp = new JScrollPane(ta);
-        // sp.getViewport().add(ta);
+        sp.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        sp.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
+        sp.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, TOOLBAR_RULE),
+                BorderFactory.createEmptyBorder(2, 8, 2, 8)));
         return sp;
     }
 
@@ -541,11 +697,12 @@ public class Debugger extends JFrame {
         else
             list = new JList(listData);
 
-        list.setFont(new Font(FONT, Font.PLAIN, FONT_SIZE));
+        styleList(list);
         list.addListSelectionListener(sl);
-        list.setBorder(BorderFactory.createLineBorder(Color.black));
         JScrollPane sp = new JScrollPane(list);
-        // sp.getViewport().add(list);
+        sp.setBorder(BorderFactory.createEmptyBorder());
+        sp.setViewportBorder(BorderFactory.createEmptyBorder());
+        sp.getViewport().setBackground(Color.WHITE);
         return sp;
     }
 
@@ -562,20 +719,41 @@ public class Debugger extends JFrame {
         else
             list = new JList(listData);
 
-        list.setFont(new Font(FONT, Font.PLAIN, FONT_SIZE));
+        styleList(list);
         list.addListSelectionListener(sl);
-        list.setBorder(BorderFactory.createLineBorder(Color.black));
         JScrollPane sp = new JScrollPane(list);
-        // sp.getViewport().add(list);
+        sp.setBorder(BorderFactory.createEmptyBorder());
+        sp.setViewportBorder(BorderFactory.createEmptyBorder());
+        sp.getViewport().setBackground(Color.WHITE);
         return sp;
+    }
+
+    private static void styleList(JList list) {
+        list.setFont(new Font(FONT, Font.PLAIN, FONT_SIZE));
+        list.setFixedCellHeight(FONT_SIZE + 5);
+        list.setBackground(Color.WHITE);
+        list.setSelectionBackground(new Color(47, 111, 237));
+        list.setSelectionForeground(Color.WHITE);
+        list.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 0));
+        DefaultListCellRenderer renderer = new DefaultListCellRenderer() {
+            public Component getListCellRendererComponent(JList jlist,
+                    Object value, int index, boolean isSelected,
+                    boolean cellHasFocus) {
+                super.getListCellRendererComponent(jlist, value, index,
+                        isSelected, cellHasFocus);
+                setBorder(BorderFactory.createEmptyBorder(0, 6, 0, 6));
+                return this;
+            }
+        };
+        list.setCellRenderer(renderer);
     }
 
     // Create special panels
 
     public JPanel createThreadsPanel() {
         JButton b0, b1, b2, b3;
-        JPanel panel = createP("Threads ");
-        JPanel panel1 = (JPanel) panel.getComponent(0);
+        JPanel panel = createP("Threads");
+        JPanel panel1 = navBar(panel);
 
         JScrollPane sp = createJL(ThreadPane.singleton(), new ThreadListener(),
                 true);
@@ -583,14 +761,10 @@ public class Debugger extends JFrame {
 
         // panel.add(new Label("Threads"));
 
-        panel1.add(b0 = new JButton(firstImage));
-        b0.setToolTipText("First timestamp this thread");
-        panel1.add(b1 = new JButton(backImage));
-        b1.setToolTipText("Previous context switch");
-        panel1.add(b2 = new JButton(forwardImage));
-        b2.setToolTipText("Next context switch");
-        panel1.add(b3 = new JButton(lastImage));
-        b3.setToolTipText("Last timestamp this thread");
+        panel1.add(b0 = navButton(firstImage, "First timestamp this thread"));
+        panel1.add(b1 = navButton(backImage, "Previous context switch"));
+        panel1.add(b2 = navButton(forwardImage, "Next context switch"));
+        panel1.add(b3 = navButton(lastImage, "Last timestamp this thread"));
         ActionListener listener = new ThreadActionListener(b0, b1, b2, b3);
         b0.addActionListener(listener);
         b1.addActionListener(listener);
@@ -599,12 +773,9 @@ public class Debugger extends JFrame {
         panel.add(sp);
         if (VGA) {
             panel.setMinimumSize(new Dimension(80, 0));
-            // panel.setPreferredSize(new Dimension(150, 100));
             panel.setMaximumSize(new Dimension(200, 300));
         } else {
-            panel.setMinimumSize(new Dimension(200, 150));
-            // panel.setPreferredSize(new Dimension(250, 250));
-            panel.setMaximumSize(new Dimension(400, 400));
+            panel.setMinimumSize(new Dimension(180, 80));
         }
 
         // ThreadPane.initialize();
@@ -618,28 +789,21 @@ public class Debugger extends JFrame {
         panel.add(sp);
         if (VGA) {
             panel.setMinimumSize(new Dimension(80, 0));
-            // panel.setPreferredSize(new Dimension(150, 80));
             panel.setMaximumSize(new Dimension(400, 200));
         } else {
-            panel.setMinimumSize(new Dimension(200, 100));
-            // panel.setPreferredSize(new Dimension(250, 250));
-            panel.setMaximumSize(new Dimension(400, 300));
+            panel.setMinimumSize(new Dimension(180, 60));
         }
         return panel;
     }
 
     public JPanel createLocalsPanel() {
         JButton b0, b1, b2, b3, b4;
-        JPanel panel = createP("Locals ");
-        JPanel panel1 = (JPanel) panel.getComponent(0);
-        panel1.add(b0 = new JButton(firstImage));
-        b0.setToolTipText("First value this variable");
-        panel1.add(b1 = new JButton(backImage));
-        b1.setToolTipText("Previous value this variable");
-        panel1.add(b2 = new JButton(forwardImage));
-        b2.setToolTipText("Next value this variable");
-        panel1.add(b3 = new JButton(lastImage));
-        b3.setToolTipText("Last value this variable");
+        JPanel panel = createP("Locals");
+        JPanel panel1 = navBar(panel);
+        panel1.add(b0 = navButton(firstImage, "First value this variable"));
+        panel1.add(b1 = navButton(backImage, "Previous value this variable"));
+        panel1.add(b2 = navButton(forwardImage, "Next value this variable"));
+        panel1.add(b3 = navButton(lastImage, "Last value this variable"));
         b4 = new JButton("X"); // KILL THIS LATER
 
         ActionListener listener = new LocalsActionListener(b0, b1, b2, b3, b4);
@@ -655,12 +819,9 @@ public class Debugger extends JFrame {
         LocalsPList = (JList) sp.getViewport().getComponent(0);
         if (VGA) {
             panel.setMinimumSize(new Dimension(80, 0));
-            // panel.setPreferredSize(new Dimension(150, 120));
             panel.setMaximumSize(new Dimension(400, 300));
         } else {
-            panel.setMinimumSize(new Dimension(200, 100));
-            // panel.setPreferredSize(new Dimension(250, 250));
-            panel.setMaximumSize(new Dimension(400, 300));
+            panel.setMinimumSize(new Dimension(180, 80));
         }
         return panel;
     }
@@ -675,12 +836,9 @@ public class Debugger extends JFrame {
         ThisPList = (JList) sp.getViewport().getComponent(0);
         if (VGA) {
             panel.setMinimumSize(new Dimension(80, 0));
-            // panel.setPreferredSize(new Dimension(150, 80));
             panel.setMaximumSize(new Dimension(400, 200));
         } else {
-            panel.setMinimumSize(new Dimension(200, 100));
-            // panel.setPreferredSize(new Dimension(250, 250));
-            panel.setMaximumSize(new Dimension(400, 200));
+            panel.setMinimumSize(new Dimension(180, 60));
         }
         return panel;
     }
@@ -783,17 +941,12 @@ public class Debugger extends JFrame {
 
     public JPanel createObjectPanel() {
         JButton b0, b1, b2, b3, b4, b5, b6;
-        JPanel panel = createP2("Objects ");
-        JPanel panel2 = (JPanel) panel.getComponent(0);
-        JPanel panel1 = (JPanel) panel2.getComponent(1);
-        panel1.add(b0 = new JButton(firstImage));
-        b0.setToolTipText("First value this variable");
-        panel1.add(b1 = new JButton(backImage));
-        b1.setToolTipText("Previous value this variable");
-        panel1.add(b2 = new JButton(forwardImage));
-        b2.setToolTipText("Next value this variable");
-        panel1.add(b3 = new JButton(lastImage));
-        b3.setToolTipText("Last value this variable");
+        JPanel panel = createP2("Objects");
+        JPanel panel1 = navBar(panel);
+        panel1.add(b0 = navButton(firstImage, "First value this variable"));
+        panel1.add(b1 = navButton(backImage, "Previous value this variable"));
+        panel1.add(b2 = navButton(forwardImage, "Next value this variable"));
+        panel1.add(b3 = navButton(lastImage, "Last value this variable"));
         ActionListener listener = new ObjectActionListener(b0, b1, b2, b3);
         b0.addActionListener(listener);
         b1.addActionListener(listener);
@@ -805,27 +958,21 @@ public class Debugger extends JFrame {
         ObjectsPList = (JList) sp.getViewport().getComponent(0);
         if (VGA) {
             panel.setMinimumSize(new Dimension(80, 150));
-            // panel.setPreferredSize(new Dimension(160, 250));
         } else {
-            panel.setMinimumSize(new Dimension(100, 250));
-            // panel.setPreferredSize(new Dimension(250, 250));
+            panel.setMinimumSize(new Dimension(180, 150));
         }
         return panel;
     }
 
     public JPanel createTracePanel() {
         JButton b3, b4, b5, b6, b7;
-        JPanel panel = createP("Method Traces ");
-        JPanel panel1 = (JPanel) panel.getComponent(0);
+        JPanel panel = createP("Method Traces");
+        JPanel panel1 = navBar(panel);
 
-        panel1.add(b4 = new JButton(firstImage));
-        b4.setToolTipText("First call of this method");
-        panel1.add(b5 = new JButton(backImage));
-        b5.setToolTipText("Previous call of this method");
-        panel1.add(b6 = new JButton(forwardImage));
-        b6.setToolTipText("Next call of this method");
-        panel1.add(b7 = new JButton(lastImage));
-        b7.setToolTipText("Last call of this method");
+        panel1.add(b4 = navButton(firstImage, "First call of this method"));
+        panel1.add(b5 = navButton(backImage, "Previous call of this method"));
+        panel1.add(b6 = navButton(forwardImage, "Next call of this method"));
+        panel1.add(b7 = navButton(lastImage, "Last call of this method"));
         ActionListener listener = new TraceActionListener(b4, b5, b6, b7);
         b4.addActionListener(listener);
         b5.addActionListener(listener);
@@ -840,9 +987,7 @@ public class Debugger extends JFrame {
             panel.setPreferredSize(new Dimension(350, 300));
             panel.setMaximumSize(new Dimension(800, 600));
         } else {
-            panel.setMinimumSize(new Dimension(450, 150));
-            // panel.setPreferredSize(new Dimension(550, 400));
-            panel.setMaximumSize(new Dimension(500, 600));
+            panel.setMinimumSize(new Dimension(280, 120));
         }
         panel.add(sp);
         return panel;
@@ -850,28 +995,24 @@ public class Debugger extends JFrame {
 
     public JPanel createCodePanel() {
         JButton b0, b1, b2, b3, b4, b5, b6, b7, b8, b9;
-        JPanel panel = createP("Code ");
-        JPanel panel1 = (JPanel) panel.getComponent(0);
-        panel1.add(b0 = new JButton(firstImage));
-        b0.setToolTipText("First timestamp this method");
-        panel1.add(b1 = new JButton(prevLineImage));
-        b1.setToolTipText("Previous line this method (step over)");
-        panel1.add(b2 = new JButton(backImage));
-        b2.setToolTipText("Previous line any method (step in/out)");
-        panel1.add(b3 = new JButton(forwardImage));
-        b3.setToolTipText("Next line any method (step in/out)");
-        panel1.add(b4 = new JButton(nextLineImage));
-        b4.setToolTipText("Next line this method (step over)");
-        panel1.add(b5 = new JButton(lastImage));
-        b5.setToolTipText("Last timestamp this method");
-        panel1.add(b6 = new JButton(loopImage));
-        b6.setToolTipText("Next timestamp on this line, in this method");
-        panel1.add(b7 = new JButton(backLoopImage));
-        b7.setToolTipText("Previous timestamp on this line, in this method");
-        panel1.add(b8 = new JButton(upImage));
-        b8.setToolTipText("Go back to caller of this method");
-        panel1.add(b9 = new JButton(downImage));
-        b9.setToolTipText("Return from this method");
+        JPanel panel = createP("Code");
+        JPanel panel1 = navBar(panel);
+        panel1.add(b0 = navButton(firstImage, "First timestamp this method"));
+        panel1.add(b1 = navButton(prevLineImage,
+                "Previous line this method (step over)"));
+        panel1.add(b2 = navButton(backImage,
+                "Previous line any method (step in/out)"));
+        panel1.add(b3 = navButton(forwardImage,
+                "Next line any method (step in/out)"));
+        panel1.add(b4 = navButton(nextLineImage,
+                "Next line this method (step over)"));
+        panel1.add(b5 = navButton(lastImage, "Last timestamp this method"));
+        panel1.add(b6 = navButton(loopImage,
+                "Next timestamp on this line, in this method"));
+        panel1.add(b7 = navButton(backLoopImage,
+                "Previous timestamp on this line, in this method"));
+        panel1.add(b8 = navButton(upImage, "Go back to caller of this method"));
+        panel1.add(b9 = navButton(downImage, "Return from this method"));
         ActionListener listener = new CodeActionListener(b0, b1, b2, b3, b4,
                 b5, b6, b7, b8, b9);
         b0.addActionListener(listener);
@@ -889,12 +1030,9 @@ public class Debugger extends JFrame {
         codeJList = (JList) sp.getViewport().getComponent(0);
         if (VGA) {
             panel.setMinimumSize(new Dimension(200, 100));
-            // panel.setPreferredSize(new Dimension(300, 200));
             panel.setMaximumSize(new Dimension(800, 600));
         } else {
-            panel.setMinimumSize(new Dimension(400, 150));
-            // panel.setPreferredSize(new Dimension(550, 400));
-            panel.setMaximumSize(new Dimension(500, 600));
+            panel.setMinimumSize(new Dimension(280, 120));
         }
         panel.add(sp);
         return panel;
@@ -903,17 +1041,12 @@ public class Debugger extends JFrame {
     public JPanel createTTYPanel() {
         JButton b0, b1, b2, b3;
 
-        JPanel panel = createP("TTY Output ");
-
-        JPanel panel1 = (JPanel) panel.getComponent(0);
-        panel1.add(b0 = new JButton(firstImage));
-        b0.setToolTipText("First timestamp this PrintStream");
-        panel1.add(b1 = new JButton(backImage));
-        b1.setToolTipText("Previous timestamp this PrintStream");
-        panel1.add(b2 = new JButton(forwardImage));
-        b2.setToolTipText("Next timestamp this PrintStream");
-        panel1.add(b3 = new JButton(lastImage));
-        b3.setToolTipText("Last timestamp this PrintStream");
+        JPanel panel = createP("Console");
+        JPanel panel1 = navBar(panel);
+        panel1.add(b0 = navButton(firstImage, "First timestamp this PrintStream"));
+        panel1.add(b1 = navButton(backImage, "Previous timestamp this PrintStream"));
+        panel1.add(b2 = navButton(forwardImage, "Next timestamp this PrintStream"));
+        panel1.add(b3 = navButton(lastImage, "Last timestamp this PrintStream"));
         ActionListener listener = new TTYActionListener(b0, b1, b2, b3);
         b0.addActionListener(listener);
         b1.addActionListener(listener);
@@ -925,12 +1058,9 @@ public class Debugger extends JFrame {
         panel.add(sp);
         if (VGA) {
             panel.setMinimumSize(new Dimension(200, 0));
-            // panel.setPreferredSize(new Dimension(300, 100));
             panel.setMaximumSize(new Dimension(500, 400));
         } else {
-            panel.setMinimumSize(new Dimension(400, 0));
-            // panel.setPreferredSize(new Dimension(550, 200));
-            panel.setMaximumSize(new Dimension(500, 400));
+            panel.setMinimumSize(new Dimension(280, 60));
         }
         TTYPane.initialize();
         return panel;
@@ -995,6 +1125,7 @@ public class Debugger extends JFrame {
         firstRun = Defaults.readDefaults();
         readCommandLineFlags();
         TimeStamp.initialize();
+        installLookAndFeel();
 
         if (CMD_LINE) { // if on command line w/a class name to run.
             programName = args[0];
@@ -1050,6 +1181,7 @@ public class Debugger extends JFrame {
         firstRun = Defaults.readDefaults();
         IntegrationState.loadSourceDirectories();
         readCommandLineFlags();
+        installLookAndFeel();
         TimeStamp.initialize();
         programName = target;
         classLoader = new DebugifyingClassLoader();
@@ -1112,10 +1244,17 @@ public class Debugger extends JFrame {
             return;
         IntegrationState.requireUsefulRecording(TimeStamp.nTSCreated, TimeStamp.eott());
         // Somebody already created it. (Early STOP button is one way)
+        installLookAndFeel();
         mainFrame = new Debugger();
         mainFrame.initialize();
         mainFrame.pack();
+        if (!VGA && !SCREEN_SHOT) {
+            mainFrame.sizeToScreen();
+        }
         mainFrame.setVisible(true);
+        if (!VGA && !SCREEN_SHOT) {
+            mainFrame.layoutSplitPanes();
+        }
         IntegrationState.debuggerReady(TimeStamp.nTSCreated, TimeStamp.eott());
         mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         ThreadPane.initialize();
@@ -1362,10 +1501,13 @@ public class Debugger extends JFrame {
     static ImageIcon backLoopImage;
     static ImageIcon prevLineImage;
     static ImageIcon nextLineImage;
+    static ImageIcon previousImage;
 
     public static JList StackPList, LocalsPList, TracePList, ObjectsPList,
             ThisPList, ThreadPList, codeJList, TTYPList;
     public static JLabel TSLabel = null;
+    private JSplitPane westPane1, westPane2, westPane3, centerPane1, centerPane2,
+            splitPaneH, splitPaneH1;
     public static JPopupMenu traceMenu;
     public static JPanel topPanel;
     public static boolean reverting = false;
@@ -1668,7 +1810,7 @@ public class Debugger extends JFrame {
         JMenuItem openJMenuItem = createJMenuItemAlt(menu, "Open", 0,
                 "Open File", listener);
         JMenuItem exitJMenuItem = createJMenuItemAlt(menu, "Exit", 0,
-                "Open File", listener);
+                "Exit", listener);
         JMenuItem addJMenuItem = createJMenuItemCTRL(menu, "Add Mark",
                 KeyEvent.VK_SPACE, "Add a mark to the ring", listener);
         JMenuItem previousJMenuItem = createJMenuItemCTRL(menu,
@@ -1690,10 +1832,10 @@ public class Debugger extends JFrame {
                 "Clear everything.", listener);
         JMenuItem startJMenuItem = createJMenuItemAlt(menu,
                 "Start Recording on Output", 0,
-                "Start Recording on Selected TTY Output", listener);
+                "Start Recording on Selected Console Output", listener);
         JMenuItem stopJMenuItem = createJMenuItemAlt(menu,
                 "Stop Recording on Output", 0,
-                "Stop Recording on Selected TTY Output", listener);
+                "Stop Recording on Selected Console Output", listener);
         JMenuItem startLJMenuItem = createJMenuItemAlt(menu,
                 "Start Recording on Line", 0,
                 "Start Recording on Selected Line", listener);

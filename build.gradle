@@ -67,7 +67,9 @@ def debuggerDebuggerSourceReplacements = [
     ['com.lambda', 'lambda'],
     ['edu.insa.LSD', 'insa.LSD'],
     ['Debugger Controller', 'DebuggerDebugger Controller'],
+    ['ODB Controller', 'ODB DebuggerController'],
     ['Omniscient Debugger', 'Omniscient DebuggerDebugger'],
+    ['Lewis ODB', 'Lewis ODBDebugger'],
     ['getProperty("', 'getProperty("D'],
     ['debuggerDefaults', 'ddebuggerDefaults'],
 ]

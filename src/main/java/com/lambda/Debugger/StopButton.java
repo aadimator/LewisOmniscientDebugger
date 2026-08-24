@@ -54,28 +54,45 @@ public class StopButton extends JFrame {
         Debugger.PAUSED = paused;
         Debugger.SHOW = show;
 
-        setTitle("Debugger Controller - " + Debugger.programName);
+        setTitle("ODB Controller");
 
         topPanel = new JPanel();
-        // topPanel.setLayout( new FlowLayout() );
         topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.X_AXIS));
+        topPanel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         getContentPane().add(topPanel);
 
-        topPanel.add(stopButton = new JButton(stopText));
+        JPanel left = new JPanel();
+        left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
+        left.setAlignmentY(Component.TOP_ALIGNMENT);
+        JLabel target = new JLabel(Debugger.programName);
+        left.add(target);
+        left.add(Box.createVerticalStrut(8));
+        left.add(stopButton = new JButton(stopText));
         stopButton.setToolTipText("Start/Stop Recording");
+        stopButton.setAlignmentX(Component.LEFT_ALIGNMENT);
+        target.setAlignmentX(Component.LEFT_ALIGNMENT);
         ActionListener listener = new StopButtonActionListener(stopButton);
         stopButton.addActionListener(listener);
 
         JPanel p = new JPanel();
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
-        p.add(debuggerCB = new JCheckBox("Bring up Debugger on Stop",
-                Debugger.SHOW));
-        p.add(instrumentCB = new JCheckBox("Instrument Classes",
-                Debugger.INSTRUMENT));
-        p.add(recordCB = new JCheckBox("Start Recording Immediately",
-                !Debugger.PAUSED));
-        p.add(pauseProgamCB = new JCheckBox("Pause Program on Stop",
-                Debugger.PAUSE_ON_STOP));
+        p.setAlignmentY(Component.TOP_ALIGNMENT);
+        debuggerCB = new JCheckBox("Bring up Debugger on Stop",
+                Debugger.SHOW);
+        instrumentCB = new JCheckBox("Instrument Classes",
+                Debugger.INSTRUMENT);
+        recordCB = new JCheckBox("Start Recording Immediately",
+                !Debugger.PAUSED);
+        pauseProgamCB = new JCheckBox("Pause Program on Stop",
+                Debugger.PAUSE_ON_STOP);
+        if (!IntegrationState.isActive()) {
+            p.add(debuggerCB);
+            p.add(instrumentCB);
+        }
+        p.add(recordCB);
+        p.add(pauseProgamCB);
+        topPanel.add(left);
+        topPanel.add(Box.createHorizontalStrut(16));
         topPanel.add(p);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
     }
@@ -111,8 +128,15 @@ public class StopButton extends JFrame {
 
     public static void runButton(boolean startTarget, boolean paused,
             boolean show, boolean instrument) {
+        Debugger.installLookAndFeel();
         mainFrame = new StopButton(startTarget, paused, show, instrument);
         mainFrame.pack();
+        Dimension size = mainFrame.getSize();
+        if (size.width < 380) {
+            mainFrame.setSize(380, size.height);
+        }
+        mainFrame.setMinimumSize(mainFrame.getSize());
+        mainFrame.setLocationRelativeTo(null);
         mainFrame.setVisible(true);
     }
 

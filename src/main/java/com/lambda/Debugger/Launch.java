@@ -153,6 +153,7 @@ public class Launch extends JFrame {
     }
 
     public static void create() {
+        Debugger.installLookAndFeel();
         launchWindow = new Launch();
         launchWindow.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
