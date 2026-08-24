@@ -6,6 +6,7 @@ This documentation site is the new home for the project manual and future guides
 
 ## Start here
 
+- [IntelliJ Plugin](intellij-plugin.md): install Lewis ODB and run a Java Application from IntelliJ IDEA.
 - [User Manual](user-manual/index.md): port of the original ODB user manual.
 - [Development](development.md): build and documentation commands for this repository.
 
